@@ -1,9 +1,3 @@
-require 'serialport'
-require 'matrix'
-require './utility'
-require './devices'
-require './geometry'
-
 class Scanner
   MIN_THETA = 120
   MAX_THETA = 150
@@ -203,14 +197,18 @@ class Scanner
     puts "In plane: #{plane.include?(p2)}"
 
     p = p1
-    3.times do
-      new_p = Point.new({x: p.x + plane.vec_on_plane[0],
-                         y: p.y + plane.vec_on_plane[1],
-                         z: p.z + plane.vec_on_plane[2]})
+
+    horiz_vector = SpatialVector[0, 0, 1].cross_product(plane.normal) * -0.1
+
+    10.times do
+      new_p = Point.new({x: p.x + horiz_vector[0],
+                         y: p.y + horiz_vector[1],
+                         z: p.z + horiz_vector[2]})
       p = new_p
       "moving to #{p.phi}, #{p.theta}"
       @arduino.move(p.phi, p.theta)
-      @leica.measure
+      sleep(1)
+      # @leica.measure
     end
 
 =begin
@@ -243,13 +241,3 @@ class Scanner
     @leica.measure
   end
 end
-
-
-s = Scanner.new
-#s.test_both
-#s.test_leica
-#s.test_arduino
-#s.find_closest
-s.find_plane_from(162, 118)
-#s.test_cartesian_movements
-
