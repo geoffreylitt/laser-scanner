@@ -95,7 +95,6 @@ class Leica < SerialDevice
 
   def initialize(port, *params)
     super(port, BAUD_RATE, *params)
-    puts("Initializing Leica...")
     sleep(2)
     @serial.write("a\r") # turn device on, prepare for measurements
     result = @serial.read(3) # read "?\r\n" response from Leica
@@ -133,7 +132,7 @@ class Point
   SCALING_FACTOR = 100
   DECIMALS = 2
 
-  attr_accessor :x, :y, :z
+  attr_accessor :x, :y, :z, :r, :phi, :theta
 
   # Point can be constructed from spherical or cartesian coordinates.
   # A hash is passed in with keys (r, phi, theta) or (x, y, z)
@@ -160,8 +159,10 @@ class Point
       @z = args[:z]
 
       @r = Math.sqrt(x**2 + y**2 + z**2).round(5)
-      @theta = Math.acos(@z / @r).round(0)
-      @phi = Math.atan(@y / @x).round(0)
+      @theta = Utility.deg(Math.acos(@z / @r)).round(0)
+      @phi = Utility.deg(Math.atan2(@y, @x)).round(0)
+    else
+      raise ArgumentError, "malformed args hash -- must contain x,y,z or r,phi,theta"
     end
   end
 
@@ -235,8 +236,10 @@ end
 # A Plane object represents a plane in 3d space.
 # It's defined by a point and a normal vector.
 class Plane
-  ANGLE_TOLERANCE = 5
+  ANGLE_TOLERANCE = 3
   MIN_DIST = 10
+
+  attr_accessor :vec_on_plane, :point, :normal
 
   # Constructs a new Plane object from 3 Point objects.
   def initialize(p1, p2, p3)
@@ -257,6 +260,7 @@ class Plane
     # to get an accurate vector reading. Add a vector on the plane to the
     # given point, until it's suitably far.
     while @point.vector_to(p).r < MIN_DIST
+      puts "adding distance between query point and reference point"
       p.x += @vec_on_plane[0]
       p.y += @vec_on_plane[1]
       p.z += @vec_on_plane[2]
@@ -290,16 +294,23 @@ class Scanner
 
   STEP_SIZE = 1
 
+  # degrees to move from starting point to establish plane
+  DELTA_DEG = 5
+
   LEICA_PORT = "/dev/tty.DISTOD3903520385-Serial"
   ARDUINO_PORT = "/dev/tty.usbmodem1421"
 
   def initialize
     @cloud = PointCloud.new
 
+    puts "Initializing Leica..."
     @leica = Leica.new(LEICA_PORT)
+
+    puts "Initializing Arduino..."
     @arduino = Arduino.new(ARDUINO_PORT)
 
-    puts "Devices successfully initialized..."
+    puts "Devices successfully initialized"
+
     sleep(1)
   end
 
@@ -436,7 +447,8 @@ class Scanner
   # of scanning space around it.
   #
   # Returns a Plane object, which is defined by a point and a normal vector.
-  def find_plane_from(init_phi, init_theta, delta_deg)
+  def find_plane_from(init_phi, init_theta)
+
     phi = init_phi
     theta = init_theta
 
@@ -446,7 +458,7 @@ class Scanner
     @cloud.add(p1)
     puts "p1: #{p1}"
 
-    phi = init_phi + delta_deg
+    phi = init_phi + DELTA_DEG
     theta = init_theta
 
     @arduino.move(phi, theta)
@@ -456,7 +468,7 @@ class Scanner
     puts "p2: #{p2}"
 
     phi = init_phi
-    theta = init_theta + delta_deg
+    theta = init_theta + DELTA_DEG
 
     @arduino.move(phi, theta)
     r = @leica.measure
@@ -468,6 +480,18 @@ class Scanner
 
     puts "In plane: #{plane.include?(p2)}"
 
+    p = p1
+    3.times do
+      new_p = Point.new({x: p.x + plane.vec_on_plane[0],
+                         y: p.y + plane.vec_on_plane[1],
+                         z: p.z + plane.vec_on_plane[2]})
+      p = new_p
+      "moving to #{p.phi}, #{p.theta}"
+      @arduino.move(p.phi, p.theta)
+      @leica.measure
+    end
+
+=begin
     while true
       print "phi: "
       phi = gets.chomp.to_i
@@ -481,9 +505,21 @@ class Scanner
       puts "point: #{p}"
       puts "In plane: #{plane.include?(p)}"
     end
-
+=end
   end
 
+  def test_cartesian_movements
+    @arduino.move(162, 127)
+    r = @leica.measure
+    p = Point.new({r: r, phi: 162, theta: 118})
+    puts p
+
+    p2 = Point.new({x: p.x + 1, y: p.y + 1, z: p.z})
+    puts p2
+    puts "moving to #{p2.phi}, #{p2.theta}"
+    @arduino.move(p2.phi, p2.theta)
+    @leica.measure
+  end
 end
 
 
@@ -492,4 +528,6 @@ s = Scanner.new
 #s.test_leica
 #s.test_arduino
 #s.find_closest
-s.find_plane_from(162, 118, 5)
+s.find_plane_from(162, 118)
+#s.test_cartesian_movements
+
