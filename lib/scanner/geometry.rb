@@ -1,3 +1,5 @@
+require 'matrix'
+
 class Point
   SCALING_FACTOR = 100
   DECIMALS = 2
@@ -29,8 +31,9 @@ class Point
       @z = args[:z]
 
       @r = Math.sqrt(x**2 + y**2 + z**2).round(5)
-      @theta = Utility.deg(Math.acos(@z / @r)).round(0)
-      @phi = Utility.deg(Math.atan2(@y, @x)).round(0)
+      @theta = Utility.deg(Math.acos(@z / @r)).round(3)
+      @phi = Utility.deg(Math.atan2(@y, @x)).round(3)
+      @r = @r / SCALING_FACTOR
     else
       raise ArgumentError, "malformed args hash -- must contain x,y,z or r,phi,theta"
     end
@@ -50,6 +53,13 @@ class Point
 
   def ==(p)
     self.x == p.x && self.y == p.y && self.z == p.z
+  end
+
+  # Returns a point that is the result of adding vector v to this point
+  def add_vector(v)
+    return Point.new({x: self.x + v[0],
+                      y: self.y + v[1],
+                      z: self.z + v[2]})
   end
 end
 
@@ -106,7 +116,7 @@ end
 # A Plane object represents a plane in 3d space.
 # It's defined by a point and a normal vector.
 class Plane
-  ANGLE_TOLERANCE = 3
+  ANGLE_TOLERANCE = 4 #experimentally determined to be effective
   MIN_DIST = 10
 
   attr_accessor :vec_on_plane, :point, :normal

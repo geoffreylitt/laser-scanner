@@ -16,6 +16,10 @@ class Arduino < SerialDevice
   MIN_THETA = 0
   MAX_THETA = 150
 
+  # limits on delay between scans
+  MIN_DELAY = 1.5
+  MAX_DELAY = 3
+
   attr_accessor :phi, :theta
 
   # initialize the serial connection and initial angles
@@ -41,7 +45,7 @@ class Arduino < SerialDevice
     d_phi = (@phi - phi).abs
     d_theta = (@theta - theta).abs
     delta = [d_phi, d_theta].max
-    sleep_time = [[(0.05 * delta), 2].min, 1].max
+    sleep_time = [[(0.05 * delta), MAX_DELAY].min, MIN_DELAY].max
 
     @phi = phi
     @theta = theta
