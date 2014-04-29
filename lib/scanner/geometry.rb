@@ -97,7 +97,7 @@ class PointCloud
 
   # coord_sys is either :spherical or :cartesian
   def output(coord_sys)
-    File.open("./outfiles/#{coord_sys.to_s}_#{Time.now.strftime("%y%m%d-%H%M%S")}.txt", "w") do |out_file|
+    File.open("../outfiles/#{coord_sys.to_s}_#{Time.now.strftime("%y%m%d-%H%M%S")}.txt", "w") do |out_file|
       @points.each do |p|
         if coord_sys == :cartesian
           puts "%.4f,%.4f,%.4f" % [p.x, p.y, p.z]

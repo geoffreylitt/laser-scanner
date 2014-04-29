@@ -28,6 +28,11 @@ class Arduino < SerialDevice
 
   # given a phi and theta, moves the pan-tilt to that angle
   def move(phi, theta)
+
+    # compensate for drifting due to weight imbalance
+    # theta = theta - (4 * theta / 90)
+    theta = theta - 5
+
     if (phi < MIN_PHI or phi > MAX_PHI)
       raise ArgumentError, "invalid phi"
     end

@@ -7,4 +7,4 @@ s = Scanner.new
 # s.find_closest
 # s.test_plane_finding(153, 113)
 #s.test_cartesian_movements
-s.find_box_1(153, 113, 5)
+s.find_box(153, 120, 7)

@@ -71,8 +71,6 @@ class Scanner
     @arduino.move(phi, theta)
     r = @leica.measure
     p1 = Point.new({r: r, phi: phi, theta: theta})
-    @cloud.add(p1)
-    puts "p1: #{p1}"
 
     phi = init_phi + delta_deg
     theta = init_theta
@@ -80,8 +78,6 @@ class Scanner
     @arduino.move(phi, theta)
     r = @leica.measure
     p2 = Point.new({r: r, phi: phi, theta: theta})
-    @cloud.add(p2)
-    puts "p2: #{p2}"
 
     phi = init_phi
     theta = init_theta + delta_deg
@@ -89,8 +85,6 @@ class Scanner
     @arduino.move(phi, theta)
     r = @leica.measure
     p3 = Point.new({r: r, phi: phi, theta: theta})
-    @cloud.add(p3)
-    puts "p3: #{p3}"
 
     plane = Plane.new(p1, p2, p3)
 
@@ -122,8 +116,12 @@ class Scanner
         measured_p = Point.new({r: r, phi: p.phi, theta: p.theta})
 
         if !plane.include? measured_p
-          # start the precise edge search from the last good scan
-          return find_edge_gradient_sign(old_p, vector*0.2, r_increasing)
+          # start the precise edge search a bit before the last good scan.
+          # This is to make sure we catch the edge with the gradient sign scan,
+          # even if the last good scan with this method happened to be right
+          # on the edge.
+          start_p = old_p.add_vector(vector * -0.3)
+          return find_edge_gradient_sign(start_p, vector*0.2, r_increasing)
         else
           if r_increasing.nil?
             # remember whether r is increasing as we scan
@@ -150,7 +148,6 @@ class Scanner
         r = @leica.measure
         unless r.nil?
           p = Point.new({r: r, phi: scan_p.phi, theta: scan_p.theta})
-          @cloud.add(p)
         end
         puts "measured: #{p}"
       else
@@ -161,8 +158,8 @@ class Scanner
       wrong_direction = ((r_increasing && p.r < prev_p.r) ||
                          (!r_increasing && p.r > prev_p.r))
       # Detect a sudden large change in r (compared to prev scan or 2 scans ago)
-      large_delta = (((p.r - prev_p.r).abs / prev_p.r) > 0.1 ||
-                     ((p.r - prev_prev_p.r).abs / prev_prev_p.r) > 0.1)
+      large_delta = (((p.r - prev_p.r).abs / prev_p.r) > 0.3 ||
+                     ((p.r - prev_prev_p.r).abs / prev_prev_p.r) > 0.3)
 
       # Go two measurements to confirm that the edge detection wasn't a fluke
       if wrong_direction || large_delta
@@ -215,37 +212,32 @@ class Scanner
     @cloud.output :cartesian
   end
 
-  def find_box_1(init_phi, init_theta, delta_deg)
+  def find_box(init_phi, init_theta, delta_deg)
     edge_points = Array.new
 
     plane = find_plane(init_phi, init_theta, delta_deg)
 
-    puts "SCANNING RIGHT"
+    # correct plane normal to be parallel to table based on a priori knowledge
+    plane.normal = SpatialVector[plane.normal[0], plane.normal[1], 0]
+
     movement_vector = SpatialVector[0, 0, -1].cross_product(plane.normal).normalize * 5
     edge_points[0] = find_edge_plane_inclusion(plane.point, plane, movement_vector)
-    puts "edge found: #{edge_points[0]}"
 
-    puts "SCANNING LEFT"
     movement_vector = SpatialVector[0, 0, 1].cross_product(plane.normal).normalize * 5
     edge_points[1] = find_edge_plane_inclusion(plane.point, plane, movement_vector)
-    puts "edge found: #{edge_points[1]}"
 
-    puts "SCANNING UP"
     movement_vector = SpatialVector[0, 0, 1].normalize * 5
     edge_points[2] = find_edge_plane_inclusion(plane.point, plane, movement_vector)
-    puts "edge found: #{edge_points[2]}"
 
-    puts "SCANNING DOWN"
     movement_vector = SpatialVector[0, 0, -1].normalize * 5
     edge_points[3] = find_edge_plane_inclusion(plane.point, plane, movement_vector)
-    puts "edge found: #{edge_points[3]}"
 
-    x_mid = (edge_points[0].x + edge_points[1].x) / 2
-    y_mid = (edge_points[0].y + edge_points[1].y) / 2
-    z_mid = (edge_points[2].z + edge_points[3].z) / 2
+    # x_mid = (edge_points[0].x + edge_points[1].x) / 2
+    # y_mid = (edge_points[0].y + edge_points[1].y) / 2
+    # z_mid = (edge_points[2].z + edge_points[3].z) / 2
 
-    midpoint = Point.new({x: x_mid, y: y_mid, z: z_mid})
-    puts "midpoint: #{midpoint}"
+    # midpoint = Point.new({x: x_mid, y: y_mid, z: z_mid})
+    # puts "midpoint: #{midpoint}"
 
     corner_points = Array.new
     [0, 1].each do |i1|
@@ -256,15 +248,68 @@ class Scanner
       end
     end
 
-    edge_points.each do |p|
-      illuminate(p)
+    # This code is helpful for verifying correctness of face discovery
+
+    # edge_points.each do |p|
+    #   illuminate(p)
+    # end
+
+    # corner_points.each do |p|
+    #   illuminate(p)
+    # end
+
+    # illuminate(midpoint)
+
+    # Construct three points to form the perpendicular plane for the second face
+    # The first one is the closest edge point to the scanner from first face
+    p1 = Point.new({r: Float::INFINITY, phi: 0, theta: 0})
+    edge_points.each do |ep|
+      if ep.r < p1.r
+        p1 = ep
+      end
+    end
+    p2 = p1.add_vector(plane.normal)
+    p3 = p1.add_vector(SpatialVector[0, 0, 1])
+
+    perp_plane = Plane.new(p1, p2, p3)
+    movement_vector = plane.normal.normalize * 5
+
+    # Find a point on the unexplored edge of the plane
+    back_edge_p = find_edge_plane_inclusion(p1, perp_plane, movement_vector)
+
+    [2, 3].each do |i|
+      corner_points << Point.new({x: back_edge_p.x,
+                                       y: back_edge_p.y,
+                                       z: corner_points[i].z})
     end
 
-    corner_points.each do |p|
-      illuminate(p)
+    # find 7th point of box by minimizing distance from 7th point to
+    # top corner, while ensuring it's on the right edge
+    done = false
+    test_p = corner_points[4]
+    min_v = SpatialVector[Float::INFINITY, Float::INFINITY, Float::INFINITY]
+    while !done
+      test_p = test_p.add_vector(SpatialVector[0, 0, -1].cross_product(plane.normal).normalize * 0.01)
+      test_v = test_p.vector_to(corner_points[0])
+      if test_v.r >= min_v.r
+        done = true
+      else
+        min_v = test_v
+      end
+    end
+    p7 = corner_points[4].add_vector(test_v)
+    p8 = Point.new({x: p7.x, y: p7.y, z: corner_points[1].z})
+
+    corner_points << p7
+    corner_points << p8
+
+    corner_points.each do |cp|
+      @cloud.add(cp)
     end
 
-    illuminate(midpoint)
+    @cloud.output :cartesian
 
+    require 'byebug'
+    byebug
   end
 end
