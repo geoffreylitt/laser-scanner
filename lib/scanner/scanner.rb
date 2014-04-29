@@ -1,22 +1,20 @@
 require 'serialport'
 
 class Scanner
-  MIN_THETA = 120
+  LEICA_PORT = "/dev/tty.DISTOD3903520385-Serial"
+  ARDUINO_PORT = "/dev/tty.usbmodem1421"
+
+  MIN_THETA = 30
   MAX_THETA = 150
 
-  MIN_PHI = 90
+  MIN_PHI = 0
   MAX_PHI = 180
 
   INIT_THETA = 113
   INIT_PHI = 153
 
-  STEP_SIZE = 1
-
   # degrees to move from starting point to establish plane
   DELTA_DEG = 5
-
-  LEICA_PORT = "/dev/tty.DISTOD3903520385-Serial"
-  ARDUINO_PORT = "/dev/tty.usbmodem1421"
 
   def initialize
     @cloud = PointCloud.new
@@ -48,27 +46,6 @@ class Scanner
       theta = gets.chomp.to_i
       @arduino.move(phi, theta)
     end
-  end
-
-  def brute_force_scan
-    theta = MIN_THETA
-    while theta <= MAX_THETA
-      phi = MIN_PHI
-      while phi <= MAX_PHI
-        @arduino.move(phi, theta)
-        r = @leica.measure
-        unless r.nil?
-          p = Point.new({r: r, phi: phi, theta: theta})
-          @cloud.add(p)
-          puts p
-        end
-        phi += STEP_SIZE
-      end
-      theta += STEP_SIZE
-    end
-
-    @cloud.output :spherical
-    @cloud.output :cartesian
   end
 
   def find_local_min(dim, phi_init, theta_init)
@@ -206,41 +183,34 @@ class Scanner
   # in multiples of a vector from that point, until the scanned point is
   # no longer on the plane. The last scanned point on the plane is returned.
   def fast_find_edge_point(point, plane, vector)
-    vector = SpatialVector[0, 0, 0]
     p = point
-    puts "initial p: #{p}"
-    puts "initial p spherical: #{p.r}, #{p.phi}, #{p.theta}"
     old_p = point
-    potential_edge_p = nil
+    prev_prev_p = nil
     done = false
     r_increasing = nil # keep track of whether r is increasing as we scan
                        # (used later in the precise scan phase)
 
     while true # infinite loop broken by return statement
       p = p.add_vector(vector)
-      puts "new p: #{p}"
-      puts "new p spherical: #{p.r}, #{p.phi}, #{p.theta}"
       @arduino.move(p.phi, p.theta)
       r = @leica.measure
-      puts "measured r: #{r}"
 
       if r.nil?
         return nil
       else
         #todo add error handling here
         measured_p = Point.new({r: r, phi: p.phi, theta: p.theta})
-        "r from measured point: #{measured_p.r}"
 
         if !plane.include? measured_p
-          return precise_find_edge_point(old_p, vector*0.1, r_increasing)
+          # start the precise edge search from 1 step behind the last good scan
+          precise_start_point = old_p.add_vector(vector * -1)
+          return precise_find_edge_point(precise_start_point, vector*0.2, r_increasing)
         else
           if r_increasing.nil?
             # remember whether r is increasing as we scan
             r_increasing = (old_p.r < p.r)
           end
           old_p = p
-          puts "p.r: #{p.r}"
-          puts "setting old_p.r to p.r: #{p.r}"
         end
       end
     end
@@ -248,14 +218,9 @@ class Scanner
 
   # pinpoints an edge by
   def precise_find_edge_point(point, vector, r_increasing)
-    puts "r_increasing: #{r_increasing}"
     scan_p = point
     prev_p = point.add_vector(vector * -1) # guarantee a good scan on first move
-    puts "initial point: #{point}"
-    puts "initial prev_p: #{prev_p}"
-    puts "initial point.r: #{point.r}"
-    puts "initial prev_p.r: #{prev_p.r}"
-    potential_edge_p = prev_p
+    prev_prev_p = prev_p
     done_flag = false
 
     while true # infinite while broken by a return statement
@@ -264,30 +229,21 @@ class Scanner
       if p.nil?
         @arduino.move(scan_p.phi, scan_p.theta)
         r = @leica.measure
-        puts "measured r: #{r}"
         unless r.nil?
           p = Point.new({r: r, phi: scan_p.phi, theta: scan_p.theta})
           @cloud.add(p)
-          puts "r from measured point: #{p.r}"
         end
         puts "measured: #{p}"
       else
         puts "cache hit: #{p}"
       end
 
-      # Detecting an edge...
-      puts "---"
-      puts "detecting edge"
-      puts "p.r: #{p.r}, p.phi: #{p.phi}, p.theta: #{p.theta}"
-      puts "prev_p.r: #{prev_p.r}, prev_p.phi: #{prev_p.phi}, prev_p.theta: #{prev_p.theta}"
-      puts "---"
-
       # Detect the change in sign in gradient of r
       wrong_direction = ((r_increasing && p.r < prev_p.r) ||
                          (!r_increasing && p.r > prev_p.r))
       # Detect a sudden large change in r (compared to prev scan or 2 scans ago)
-      large_delta = (((r - prev_p.r).abs / prev_p.r) > 0.1 ||
-                     ((r - potential_edge_p.r).abs / potential_edge_p.r) > 0.1)
+      large_delta = (((p.r - prev_p.r).abs / prev_p.r) > 0.1 ||
+                     ((p.r - prev_prev_p.r).abs / prev_prev_p.r) > 0.1)
 
       # Go two measurements to confirm that the edge detection wasn't a fluke
       if wrong_direction || large_delta
@@ -296,12 +252,11 @@ class Scanner
 
         if done_flag
           puts "two scans in a row wrong direction, edge found"
-          return potential_edge_p
+          return prev_prev_p
         else
           puts "opposite direction scanned, done flag set"
           done_flag = true
-          potential_edge_p = prev_p
-          puts "potential edge p: #{potential_edge_p}"
+          prev_prev_p = prev_p
         end
       else
         if done_flag
@@ -324,6 +279,28 @@ class Scanner
   def illuminate(point)
     @arduino.move(point.phi, point.theta)
     @leica.measure
+  end
+
+  def brute_force_scan(min_theta=MIN_THETA, max_theta=MAX_THETA,
+                       min_phi=MIN_PHI, max_phi=MAX_PHI)
+    theta = min_theta
+    while theta <= max_theta
+      phi = min_phi
+      while phi <= max_phi
+        @arduino.move(phi, theta)
+        r = @leica.measure
+        unless r.nil?
+          p = Point.new({r: r, phi: phi, theta: theta})
+          @cloud.add(p)
+          puts p
+        end
+        phi += STEP_SIZE
+      end
+      theta += STEP_SIZE
+    end
+
+    @cloud.output :spherical
+    @cloud.output :cartesian
   end
 
   def test_plane_finding(init_phi, init_theta)
@@ -357,20 +334,6 @@ class Scanner
       puts "point: #{p}"
       puts "In plane: #{plane.include?(p)}"
     end
-
-  end
-
-  def test_cartesian_movements
-    @arduino.move(162, 127)
-    r = @leica.measure
-    p = Point.new({r: r, phi: 162, theta: 118})
-    puts p
-
-    p2 = Point.new({x: p.x + 1, y: p.y + 1, z: p.z})
-    puts p2
-    puts "moving to #{p2.phi}, #{p2.theta}"
-    @arduino.move(p2.phi, p2.theta)
-    @leica.measure
   end
 
   def find_box_1(init_phi, init_theta)
@@ -379,47 +342,52 @@ class Scanner
     edge_points = Array.new
 
     plane = find_plane_from(init_phi, init_theta)
+
+    puts "SCANNING RIGHT"
     movement_vector = SpatialVector[0, 0, -1].cross_product(plane.normal).normalize * 3
-    require 'byebug'
-    byebug
     edge_points[0] = fast_find_edge_point(plane.point, plane, movement_vector)
+    puts "edge found: #{edge_points[0]}"
 
-    illuminate(edge_points[0])
+    puts "SCANNING LEFT"
+    movement_vector = SpatialVector[0, 0, 1].cross_product(plane.normal).normalize * 3
+    edge_points[1] = fast_find_edge_point(plane.point, plane, movement_vector)
+    puts "edge found: #{edge_points[1]}"
 
-    # movement_vector = SpatialVector[0, 0, 1].cross_product(plane.normal).normalize * 3
-    # edge_points[1] = fast_find_edge_point(plane.point, plane, movement_vector)
+    puts "SCANNING UP"
+    movement_vector = SpatialVector[0, 0, 1].normalize * 3
+    edge_points[2] = fast_find_edge_point(plane.point, plane, movement_vector)
+    puts "edge found: #{edge_points[2]}"
 
-    # movement_vector = SpatialVector[0, 0, 1].normalize * 3
-    # edge_points[2] = fast_find_edge_point(plane.point, plane, movement_vector)
+    puts "SCANNING DOWN"
+    movement_vector = SpatialVector[0, 0, -1].normalize * 3
+    edge_points[3] = fast_find_edge_point(plane.point, plane, movement_vector)
+    puts "edge found: #{edge_points[3]}"
 
-    # movement_vector = SpatialVector[0, 0, -1].normalize * 3
-    # edge_points[3] = fast_find_edge_point(plane.point, plane, movement_vector)
+    x_mid = (edge_points[0].x + edge_points[1].x) / 2
+    y_mid = (edge_points[0].y + edge_points[1].y) / 2
+    z_mid = (edge_points[2].z + edge_points[3].z) / 2
 
-    # x_mid = (edge_points[0].x + edge_points[1].x) / 2
-    # y_mid = (edge_points[0].y + edge_points[1].y) / 2
-    # z_mid = (edge_points[2].z + edge_points[3].z) / 2
+    midpoint = Point.new({x: x_mid, y: y_mid, z: z_mid})
+    puts "midpoint: #{midpoint}"
 
-    # midpoint = Point.new({x: x_mid, y: y_mid, z: z_mid})
-    # puts "midpoint: #{midpoint}"
+    corner_points = Array.new
+    [0, 1].each do |i1|
+      [2, 3].each do |i2|
+        corner_points << Point.new({x: edge_points[i1].x,
+                                    y: edge_points[i1].y,
+                                    z: edge_points[i2].z})
+      end
+    end
 
-    # corner_points = Array.new
-    # [0, 1].each do |i1|
-    #   [2, 3].each do |i2|
-    #     corner_points << Point.new({x: edge_points[i1].x,
-    #                                 y: edge_points[i1].y,
-    #                                 z: edge_points[i2].z})
-    #   end
-    # end
+    edge_points.each do |p|
+      illuminate(p)
+    end
 
-    # edge_points.each do |p|
-    #   illuminate(p)
-    # end
+    corner_points.each do |p|
+      illuminate(p)
+    end
 
-    # corner_points.each do |p|
-    #   illuminate(p)
-    # end
-
-    # illuminate(midpoint)
+    illuminate(midpoint)
 
   end
 end

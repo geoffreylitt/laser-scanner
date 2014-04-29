@@ -17,8 +17,8 @@ class Arduino < SerialDevice
   MAX_THETA = 150
 
   # limits on delay between scans
-  MIN_DELAY = 1.5
-  MAX_DELAY = 3
+  MIN_DELAY = 2
+  MAX_DELAY = 4
 
   attr_accessor :phi, :theta
 
@@ -45,13 +45,21 @@ class Arduino < SerialDevice
     d_phi = (@phi - phi).abs
     d_theta = (@theta - theta).abs
     delta = [d_phi, d_theta].max
-    sleep_time = [[(0.05 * delta), MAX_DELAY].min, MIN_DELAY].max
+    sleep_time = [[(0.1 * delta), MAX_DELAY].min, MIN_DELAY].max
+
+    # helps eliminate servo "drift" issues
+    # @phi = INIT_PHI
+    # @theta = INIT_THETA
+    # transmit
+
+    # sleep(0.5)
 
     @phi = phi
     @theta = theta
     transmit
 
-    sleep(sleep_time)
+    # sleep(sleep_time)
+    sleep(2)
 
   end
 
