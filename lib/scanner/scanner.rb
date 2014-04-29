@@ -1,4 +1,8 @@
 require 'serialport'
+require_relative 'utility'
+require_relative 'arduino'
+require_relative 'leica'
+require_relative 'geometry'
 
 class Scanner
   LEICA_PORT = "/dev/tty.DISTOD3903520385-Serial"
@@ -13,9 +17,6 @@ class Scanner
   INIT_THETA = 113
   INIT_PHI = 153
 
-  # degrees to move from starting point to establish plane
-  DELTA_DEG = 5
-
   def initialize
     @cloud = PointCloud.new
 
@@ -29,6 +30,8 @@ class Scanner
 
     sleep(1)
   end
+
+  # SIMPLE TEST FUNCTIONS
 
   def test_leica
     while true
@@ -53,7 +56,7 @@ class Scanner
   # of scanning space around it.
   #
   # Returns a Plane object, which is defined by a point and a normal vector.
-  def find_plane_from(init_phi, init_theta)
+  def find_plane(init_phi, init_theta, delta_deg)
 
     phi = init_phi
     theta = init_theta
@@ -64,7 +67,7 @@ class Scanner
     @cloud.add(p1)
     puts "p1: #{p1}"
 
-    phi = init_phi + DELTA_DEG
+    phi = init_phi + delta_deg
     theta = init_theta
 
     @arduino.move(phi, theta)
@@ -74,7 +77,7 @@ class Scanner
     puts "p2: #{p2}"
 
     phi = init_phi
-    theta = init_theta + DELTA_DEG
+    theta = init_theta + delta_deg
 
     @arduino.move(phi, theta)
     r = @leica.measure
@@ -212,45 +215,10 @@ class Scanner
     @cloud.output :cartesian
   end
 
-  def test_plane_finding(init_phi, init_theta)
-
-    plane = find_plane_from(init_phi, init_theta)
-    p = plane.point
-
-    horiz_vector = SpatialVector[0, 0, 1].cross_product(plane.normal) * -0.1
-
-    5.times do
-      # new_p = Point.new({x: p.x + horiz_vector[0],
-      #                    y: p.y + horiz_vector[1],
-      #                    z: p.z + horiz_vector[2]})
-      new_p = Point.new({x: p.x, y: p.y, z: p.z + 1})
-      p = new_p
-      "moving to #{p.phi}, #{p.theta}"
-      @arduino.move(p.phi, p.theta)
-      @leica.measure
-    end
-
-    while true
-      print "phi: "
-      phi = gets.chomp.to_i
-      print "theta: "
-      theta = gets.chomp.to_i
-
-      @arduino.move(phi, theta)
-      r = @leica.measure
-      p = Point.new({r: r, phi: phi, theta: theta})
-      @cloud.add(p)
-      puts "point: #{p}"
-      puts "In plane: #{plane.include?(p)}"
-    end
-  end
-
-  def find_box_1(init_phi, init_theta)
-    # top_corner = find_closest(init_phi, init_theta)
-
+  def find_box_1(init_phi, init_theta, delta_deg)
     edge_points = Array.new
 
-    plane = find_plane_from(init_phi, init_theta)
+    plane = find_plane(init_phi, init_theta, delta_deg)
 
     puts "SCANNING RIGHT"
     movement_vector = SpatialVector[0, 0, -1].cross_product(plane.normal).normalize * 3
