@@ -51,6 +51,13 @@ class Scanner
     end
   end
 
+  # point the Leica at a given point and activate the laser, to demonstrate
+  # the physical location of the point
+  def illuminate(point)
+    @arduino.move(point.phi, point.theta)
+    @leica.measure
+  end
+
   # Given a phi and theta, finds the plane which that point is on.
   # Assumes that the given scan point is on a flat surface with several degrees
   # of scanning space around it.
@@ -94,7 +101,8 @@ class Scanner
   # Given a point, plane and a vector, it starts at the given point and scans
   # in multiples of a vector from that point, until the scanned point is
   # no longer on the plane. The last scanned point on the plane is returned.
-  def fast_find_edge_point(point, plane, vector)
+  def find_edge_plane_inclusion(point, plane, vector)
+    puts "finding edge by plane..."
     p = point
     old_p = point
     prev_prev_p = nil
@@ -114,9 +122,8 @@ class Scanner
         measured_p = Point.new({r: r, phi: p.phi, theta: p.theta})
 
         if !plane.include? measured_p
-          # start the precise edge search from 1 step behind the last good scan
-          precise_start_point = old_p.add_vector(vector * -1)
-          return precise_find_edge_point(precise_start_point, vector*0.2, r_increasing)
+          # start the precise edge search from the last good scan
+          return find_edge_gradient_sign(old_p, vector*0.2, r_increasing)
         else
           if r_increasing.nil?
             # remember whether r is increasing as we scan
@@ -128,8 +135,8 @@ class Scanner
     end
   end
 
-  # pinpoints an edge by
-  def precise_find_edge_point(point, vector, r_increasing)
+  def find_edge_gradient_sign(point, vector, r_increasing)
+    puts "finding edge by gradient..."
     scan_p = point
     prev_p = point.add_vector(vector * -1) # guarantee a good scan on first move
     prev_prev_p = prev_p
@@ -186,13 +193,6 @@ class Scanner
     end
   end
 
-  # point the Leica at a given point and activate the laser, to demonstrate
-  # the physical location of the point
-  def illuminate(point)
-    @arduino.move(point.phi, point.theta)
-    @leica.measure
-  end
-
   def brute_force_scan(min_theta=MIN_THETA, max_theta=MAX_THETA,
                        min_phi=MIN_PHI, max_phi=MAX_PHI)
     theta = min_theta
@@ -221,23 +221,23 @@ class Scanner
     plane = find_plane(init_phi, init_theta, delta_deg)
 
     puts "SCANNING RIGHT"
-    movement_vector = SpatialVector[0, 0, -1].cross_product(plane.normal).normalize * 3
-    edge_points[0] = fast_find_edge_point(plane.point, plane, movement_vector)
+    movement_vector = SpatialVector[0, 0, -1].cross_product(plane.normal).normalize * 5
+    edge_points[0] = find_edge_plane_inclusion(plane.point, plane, movement_vector)
     puts "edge found: #{edge_points[0]}"
 
     puts "SCANNING LEFT"
-    movement_vector = SpatialVector[0, 0, 1].cross_product(plane.normal).normalize * 3
-    edge_points[1] = fast_find_edge_point(plane.point, plane, movement_vector)
+    movement_vector = SpatialVector[0, 0, 1].cross_product(plane.normal).normalize * 5
+    edge_points[1] = find_edge_plane_inclusion(plane.point, plane, movement_vector)
     puts "edge found: #{edge_points[1]}"
 
     puts "SCANNING UP"
-    movement_vector = SpatialVector[0, 0, 1].normalize * 3
-    edge_points[2] = fast_find_edge_point(plane.point, plane, movement_vector)
+    movement_vector = SpatialVector[0, 0, 1].normalize * 5
+    edge_points[2] = find_edge_plane_inclusion(plane.point, plane, movement_vector)
     puts "edge found: #{edge_points[2]}"
 
     puts "SCANNING DOWN"
-    movement_vector = SpatialVector[0, 0, -1].normalize * 3
-    edge_points[3] = fast_find_edge_point(plane.point, plane, movement_vector)
+    movement_vector = SpatialVector[0, 0, -1].normalize * 5
+    edge_points[3] = find_edge_plane_inclusion(plane.point, plane, movement_vector)
     puts "edge found: #{edge_points[3]}"
 
     x_mid = (edge_points[0].x + edge_points[1].x) / 2
