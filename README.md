@@ -4,6 +4,7 @@ Geoffrey Litt '14
 --------------------
 
 Arduino code is contained in ./arduino
+
 Ruby code is contained in ./lib
 
 To use this code, you need to:
