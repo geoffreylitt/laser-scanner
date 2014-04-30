@@ -3,6 +3,9 @@ Yale EECS Senior Project - Intelligently Targeted 3-Dimensional Scanning with a 
 Geoffrey Litt '14
 --------------------
 
+Arduino code is contained in ./arduino
+Ruby code is contained in ./lib
+
 To use this code, you need to:
 - load arduino/scan/scan.ino onto an Arduino and connect servos to the right pins,
   and verify the Arduino port name
