@@ -12,8 +12,8 @@ class Arduino < SerialDevice
   MAX_THETA = 150
 
   # limits on delay between scans
-  MIN_DELAY = 2
-  MAX_DELAY = 4
+  MIN_DELAY = 0.5
+  MAX_DELAY = 3
 
   attr_accessor :phi, :theta
 
@@ -30,7 +30,6 @@ class Arduino < SerialDevice
   def move(phi, theta)
 
     # compensate for drifting due to weight imbalance
-    # theta = theta - (4 * theta / 90)
     theta = theta - 5
 
     if (phi < MIN_PHI or phi > MAX_PHI)
@@ -47,19 +46,11 @@ class Arduino < SerialDevice
     delta = [d_phi, d_theta].max
     sleep_time = [[(0.1 * delta), MAX_DELAY].min, MIN_DELAY].max
 
-    # helps eliminate servo "drift" issues
-    # @phi = INIT_PHI
-    # @theta = INIT_THETA
-    # transmit
-
-    # sleep(0.5)
-
     @phi = phi
     @theta = theta
     transmit
 
-    # sleep(sleep_time)
-    sleep(2)
+    sleep(sleep_time)
 
   end
 

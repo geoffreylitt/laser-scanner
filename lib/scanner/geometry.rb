@@ -43,6 +43,7 @@ class Point
     "x: #{x}, y: #{y}, z: #{z}"
   end
 
+  # Returns a vector from this point to another given point
   def vector_to(p)
     dx = p.x - self.x
     dy = p.y - self.y
@@ -95,6 +96,7 @@ class PointCloud
     return nil
   end
 
+  # Writes an output file that can be imported into MeshLab and other programs
   # coord_sys is either :spherical or :cartesian
   def output(coord_sys)
     File.open("../outfiles/#{coord_sys.to_s}_#{Time.now.strftime("%y%m%d-%H%M%S")}.txt", "w") do |out_file|

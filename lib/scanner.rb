@@ -1,10 +1,10 @@
 require_relative 'scanner/scanner'
 
 s = Scanner.new
-#s.test_both
-#s.test_leica
+
+# Uncomment a line to use that function of the scanner.
+
+# s.test_leica
 # s.test_arduino
-# s.find_closest
-# s.test_plane_finding(153, 113)
-#s.test_cartesian_movements
-s.find_box(153, 120, 7)
+# s.brute_force_scan(100, 150, 105, 155, 2)
+# s.find_box(135, 125, 7)

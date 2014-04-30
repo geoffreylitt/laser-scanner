@@ -31,8 +31,6 @@ class Scanner
     sleep(1)
   end
 
-  # SIMPLE TEST FUNCTIONS
-
   def test_leica
     while true
       print "Press any key to measure"
@@ -57,6 +55,8 @@ class Scanner
     @arduino.move(point.phi, point.theta)
     @leica.measure
   end
+
+  # SCANNING ALGORITHMS
 
   # Given a phi and theta, finds the plane which that point is on.
   # Assumes that the given scan point is on a flat surface with several degrees
@@ -133,6 +133,11 @@ class Scanner
     end
   end
 
+  # This method finds the edge of a finite plane in 3d space.
+  # Given a point, plane and a vector, it starts at the given point and scans
+  # in multiples of a vector from that point, until a change in gradient of the
+  # measurements is detected, or a large change in measurement is detected,
+  # indicating an edge.
   def find_edge_gradient_sign(point, vector, r_increasing)
     puts "finding edge by gradient..."
     scan_p = point
@@ -149,9 +154,9 @@ class Scanner
         unless r.nil?
           p = Point.new({r: r, phi: scan_p.phi, theta: scan_p.theta})
         end
-        puts "measured: #{p}"
+        puts "measured r: #{p.r}"
       else
-        puts "cache hit: #{p}"
+        puts "cache hit r: #{p.r}"
       end
 
       # Detect the change in sign in gradient of r
@@ -190,8 +195,9 @@ class Scanner
     end
   end
 
+  # Scan a given range at fixed intervals
   def brute_force_scan(min_theta=MIN_THETA, max_theta=MAX_THETA,
-                       min_phi=MIN_PHI, max_phi=MAX_PHI)
+                       min_phi=MIN_PHI, max_phi=MAX_PHI, step_size)
     theta = min_theta
     while theta <= max_theta
       phi = min_phi
@@ -203,15 +209,16 @@ class Scanner
           @cloud.add(p)
           puts p
         end
-        phi += STEP_SIZE
+        phi += step_size
       end
-      theta += STEP_SIZE
+      theta += step_size
     end
 
     @cloud.output :spherical
     @cloud.output :cartesian
   end
 
+  # The main scanning routine. Outputs the eight corners of the box.
   def find_box(init_phi, init_theta, delta_deg)
     edge_points = Array.new
 
@@ -232,11 +239,11 @@ class Scanner
     movement_vector = SpatialVector[0, 0, -1].normalize * 5
     edge_points[3] = find_edge_plane_inclusion(plane.point, plane, movement_vector)
 
-    # x_mid = (edge_points[0].x + edge_points[1].x) / 2
-    # y_mid = (edge_points[0].y + edge_points[1].y) / 2
-    # z_mid = (edge_points[2].z + edge_points[3].z) / 2
+    x_mid = (edge_points[0].x + edge_points[1].x) / 2
+    y_mid = (edge_points[0].y + edge_points[1].y) / 2
+    z_mid = (edge_points[2].z + edge_points[3].z) / 2
 
-    # midpoint = Point.new({x: x_mid, y: y_mid, z: z_mid})
+    midpoint = Point.new({x: x_mid, y: y_mid, z: z_mid})
     # puts "midpoint: #{midpoint}"
 
     corner_points = Array.new
@@ -289,9 +296,11 @@ class Scanner
     test_p = corner_points[4]
     min_v = SpatialVector[Float::INFINITY, Float::INFINITY, Float::INFINITY]
     while !done
-      test_p = test_p.add_vector(SpatialVector[0, 0, -1].cross_product(plane.normal).normalize * 0.01)
+      test_p = test_p.add_vector(perp_plane.normal.normalize)
       test_v = test_p.vector_to(corner_points[0])
-      if test_v.r >= min_v.r
+      puts "test_v: #{test_v}, min_v: #{min_v}"
+      puts "test_v.r: #{test_v.r}, min_v.r: #{min_v.r}"
+      if test_v.magnitude >= min_v.magnitude
         done = true
       else
         min_v = test_v
@@ -309,7 +318,5 @@ class Scanner
 
     @cloud.output :cartesian
 
-    require 'byebug'
-    byebug
   end
 end
