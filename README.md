@@ -1,7 +1,9 @@
-Yale EECS Senior Project - Intelligently Targeted 3-Dimensional Scanning with a Laser Distance Meter
+Intelligently Targeted 3-Dimensional Scanning with a Laser Distance Meter
 ====================
-Geoffrey Litt '14
+Yale University Senior Project, in partial fulfillment of the requirements for a B.S. Degree in Electrical Engineering and Computer Science.
 --------------------
+
+### How to get this code running:
 
 Arduino code is contained in ./arduino
 
@@ -14,7 +16,7 @@ To use this code, you will need:
 - A Leica Disto D330i (similar models should also work)
 - a pan-tilt mechanism made of two servos.
 
-Follow these steps to get the project running:
+Follow these steps:
 
 1. Load `./arduino/scan/scan.ino` onto the Arduino and wire up servos to power/ground, and the appropriate control lines -- currently pin 9 for the horizontal servo and pin 10 for the vertical servo.
 2. connect a Leica Disto via Bluetooth to the computer and establish a Bluetooth serial connection (this setup varies depending on the OS). Change the hardcoded port name in `./lib/scanner/scanner.rb` to match the Leica connection port.
